@@ -19,7 +19,7 @@ func main() {
 	common.MaybePrintVersion()
 	cookiesPath := flag.String("cookies", "", "path to cookies-blink.json with the Blink login tokens")
 	loginFlag := flag.Bool("login", false, "log in with a QR code, save the tokens to --cookies and exit")
-	roomFlag := flag.String("room", "", "Blink chat id or blink://<chat id>, the creator joins the call in this chat or starts one")
+	roomFlag := flag.String("room", "", "Blink chat id or blink://<chat id> to rejoin (empty = create new room)")
 	resources := flag.String("resources", "default", "resource mode: default, moderate, unlimited, custom")
 	customReadBuf := flag.Int("read-buf", 0, "DC read buffer size in bytes, used with -resources custom")
 	customMemLimit := flag.Int64("mem-limit", 0, "memory limit in bytes, used with -resources custom")
@@ -74,14 +74,25 @@ func main() {
 		return
 	}
 
-	chatID, err := blink.ParseChatID(*roomFlag)
-	if err != nil {
-		log.Fatalf("[config] --room: %v", err)
-	}
 	credentials, err := blink.LoadCredentials(*cookiesPath, nil, log.Printf)
 	if err != nil {
 		common.EmitAuthError(common.AuthErrorSessionExpired)
 		log.Fatalf("[auth] %v", err)
+	}
+	var chatID int64
+	if *roomFlag != "" {
+		chatID, err = blink.ParseChatID(*roomFlag)
+		if err != nil {
+			log.Fatalf("[config] --room: %v", err)
+		}
+	} else {
+		chatName := blink.RandomChatName()
+		chatID, err = credentials.CreateChat(chatName)
+		if err != nil {
+			common.EmitAuthErrorFor(err)
+			log.Fatalf("[room] %v", err)
+		}
+		log.Printf("[room] created chat=%d name=%q", chatID, chatName)
 	}
 	connection, err := credentials.ConnectCall(chatID)
 	if err != nil {
