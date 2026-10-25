@@ -74,6 +74,10 @@
         {
           "from": "../headless/headless-bitrix-darwin",
           "to": "headless-bitrix-creator"
+        },
+        {
+          "from": "../headless/headless-blink-darwin",
+          "to": "headless-blink-creator"
         }
       ]
     },
@@ -105,6 +109,10 @@
         {
           "from": "../headless/headless-bitrix-bundle.exe",
           "to": "headless-bitrix-creator.exe"
+        },
+        {
+          "from": "../headless/headless-blink-bundle.exe",
+          "to": "headless-blink-creator.exe"
         }
       ]
     },
@@ -136,6 +144,10 @@
         {
           "from": "../headless/headless-bitrix-bundle",
           "to": "headless-bitrix-creator"
+        },
+        {
+          "from": "../headless/headless-blink-bundle",
+          "to": "headless-blink-creator"
         }
       ]
     }

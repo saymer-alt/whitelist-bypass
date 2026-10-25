@@ -18,8 +18,8 @@ import (
 func main() {
 	common.MaybePrintVersion()
 	cookiesPath := flag.String("cookies", "", "path to cookies-blink.json with the Blink login tokens")
-	loginFlag := flag.Bool("login", false, "log in with a QR code, save the tokens to --cookies and exit")
-	roomFlag := flag.String("room", "", "Blink chat id or blink://<chat id> to rejoin (empty = create new room)")
+	loginFlag := flag.Bool("login", false, "log in through the Blink app, save the tokens to --cookies and exit")
+	roomFlag := flag.String("room", "", "Blink chat id, blink://<chat id> or group invite link to rejoin (empty = create new room)")
 	resources := flag.String("resources", "default", "resource mode: default, moderate, unlimited, custom")
 	customReadBuf := flag.Int("read-buf", 0, "DC read buffer size in bytes, used with -resources custom")
 	customMemLimit := flag.Int64("mem-limit", 0, "memory limit in bytes, used with -resources custom")
@@ -68,7 +68,7 @@ func main() {
 		log.Fatalf("[auth] --cookies is required")
 	}
 	if *loginFlag {
-		if err := blink.LoginToFile(*cookiesPath, nil, os.Stdout, log.Printf); err != nil {
+		if err := blink.LoginToFile(*cookiesPath, nil, common.EmitStatus, log.Printf); err != nil {
 			log.Fatalf("[login] %v", err)
 		}
 		return
@@ -81,8 +81,9 @@ func main() {
 	}
 	var chatID int64
 	if *roomFlag != "" {
-		chatID, err = blink.ParseChatID(*roomFlag)
+		chatID, err = credentials.ResolveChatID(*roomFlag)
 		if err != nil {
+			common.EmitAuthErrorFor(err)
 			log.Fatalf("[config] --room: %v", err)
 		}
 	} else {

@@ -35,6 +35,7 @@ export function createMainKeyboard() {
       ],
       [
         { action: { type: 'text', label: '🟧 Bitrix', payload: JSON.stringify({ cmd: BotCommand.Bitrix, mode: 'headless' }) } },
+        { action: { type: 'text', label: '🟨 Blink', payload: JSON.stringify({ cmd: BotCommand.Blink, mode: 'headless' }) } },
       ],
       [
         { action: { type: 'text', label: '🔗 Join by link', payload: JSON.stringify({ cmd: BotCommand.JoinPrompt }) } },

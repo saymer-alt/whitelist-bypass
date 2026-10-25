@@ -38,6 +38,7 @@ import bypass.whitelist.tunnel.TunnelMode
 import bypass.whitelist.tunnel.TunnelServiceState
 import bypass.whitelist.tunnel.TunnelVpnService
 import bypass.whitelist.tunnel.VpnStatus
+import bypass.whitelist.ui.BlinkLoginSheet
 import bypass.whitelist.ui.CallsListener
 import bypass.whitelist.ui.HeadlessVkFragment
 import bypass.whitelist.ui.JoinFragmentHost
@@ -96,6 +97,7 @@ class MainActivity :
     @Volatile private var overlayVisible: Boolean = false
     @Volatile private var resetGeneration: Long = 0L
     private var pendingConnectConfig: CallConfig? = null
+    private var blinkLoginLink: String? = null
     private val navColorEvaluator = ArgbEvaluator()
 
     private val vpnLauncher = registerForActivityResult(
@@ -282,6 +284,7 @@ class MainActivity :
                 onDisconnectFromService()
             }
         }
+        showBlinkLoginSheet()
     }
 
     override fun onPause() {
@@ -425,12 +428,22 @@ class MainActivity :
         runOnUiThread { mainFragment()?.onStatusTextChanged(text) }
     }
 
+    override fun onLoginLink(link: String) {
+        runOnUiThread {
+            blinkLoginLink = link
+            showBlinkLoginSheet()
+        }
+    }
+
     override fun onJoinStatus(status: VpnStatus) {
         if (resetInProgress && status != VpnStatus.CALL_FAILED) return
         TunnelVpnService.instance?.updateStatus(status)
         ProxyService.instance?.updateStatus(status)
         lastStatus = status
         runOnUiThread {
+            if (status != VpnStatus.ACTION_REQUIRED_LOGIN) {
+                dismissBlinkLoginSheet()
+            }
             if (status == VpnStatus.CALL_FAILED) {
                 fullReset()
                 lastStatus = VpnStatus.CALL_FAILED
@@ -721,12 +734,13 @@ class MainActivity :
         mainFragment()?.onConnectedChanged(false)
 
         val headlessMode =
-            Prefs.headless || platform == CallPlatform.WBSTREAM || platform == CallPlatform.DION || platform == CallPlatform.BITRIX
+            Prefs.headless || platform == CallPlatform.WBSTREAM || platform == CallPlatform.DION || platform == CallPlatform.BITRIX || platform == CallPlatform.BLINK
 
         if (headlessMode && platform != CallPlatform.VK) {
             setJoinOverlayVisible(false)
             activeHeadlessController = HeadlessJoinController(
                 applicationInfo.nativeLibraryDir,
+                filesDir,
                 this,
                 platform,
                 url,
@@ -778,6 +792,7 @@ class MainActivity :
         activeJoinUrl = ""
 
         removeJoinFragment()
+        dismissBlinkLoginSheet()
         TunnelVpnService.requestStop(this)
         ProxyService.requestStop(this)
         HeadlessSessionService.requestStop(this)
@@ -886,6 +901,23 @@ class MainActivity :
                 .remove(fragment)
                 .commitAllowingStateLoss()
         }
+    }
+
+    private fun showBlinkLoginSheet() {
+        val link = blinkLoginLink ?: return
+        val shown = supportFragmentManager.findFragmentByTag(BlinkLoginSheet.TAG) as? BlinkLoginSheet
+        if (shown != null) {
+            shown.updateLink(link)
+            return
+        }
+        if (isDestroyed || supportFragmentManager.isStateSaved) return
+        BlinkLoginSheet.show(supportFragmentManager, link) { onJoinCancel() }
+    }
+
+    private fun dismissBlinkLoginSheet() {
+        blinkLoginLink = null
+        val shown = supportFragmentManager.findFragmentByTag(BlinkLoginSheet.TAG) as? BlinkLoginSheet
+        shown?.dismissAllowingStateLoss()
     }
 
     companion object {

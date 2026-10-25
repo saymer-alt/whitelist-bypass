@@ -1,16 +1,12 @@
 package joiner
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
-	"time"
 
-	"github.com/kulikov0/headless-client"
 	"github.com/kulikov0/headless-client/webrtc"
 	"whitelist-bypass/relay/common"
 	"whitelist-bypass/relay/dion"
@@ -61,7 +57,7 @@ func (j *DionHeadlessJoiner) RunWithParams(jsonParams string) {
 		params.DisplayName = "Joiner"
 	}
 
-	httpClient := j.makeHTTPClient()
+	httpClient := resolvingHTTPClient(j.ResolveFn)
 	j.logFn("dion-joiner: room=%s name=%s", slug, params.DisplayName)
 
 	var configureSettingEngine func(*webrtc.SettingEngine)
@@ -117,7 +113,7 @@ func (j *DionHeadlessJoiner) runOnce(httpClient *http.Client, slug, displayName 
 		DisplayName:            displayName,
 		LogFn:                  j.logFn,
 		ConfigureSettingEngine: configureSettingEngine,
-		NetDialContext:         j.makeDialContext(),
+		NetDialContext:         resolvingDialContext(j.ResolveFn),
 		ResolveICEHost:         j.ResolveFn,
 		Role:                   dion.RoleJoiner,
 	})
@@ -181,29 +177,6 @@ func (j *DionHeadlessJoiner) Close() {
 	j.stopOnce.Do(func() { close(j.stopCh) })
 	if call != nil {
 		call.Close()
-	}
-}
-
-func (j *DionHeadlessJoiner) makeDialContext() func(ctx context.Context, network, addr string) (net.Conn, error) {
-	if j.ResolveFn == nil {
-		return nil
-	}
-	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, _ := net.SplitHostPort(addr)
-		resolvedIP, err := j.ResolveFn(host)
-		if err != nil {
-			return nil, err
-		}
-		dialer := headless.ChromeDialer()
-		dialer.Timeout = 10 * time.Second
-		return dialer.DialContext(ctx, network, resolvedIP+":"+port)
-	}
-}
-
-func (j *DionHeadlessJoiner) makeHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout:   60 * time.Second,
-		Transport: headless.ChromeWindows.Transport(headless.TLSOptions{DialContext: j.makeDialContext()}),
 	}
 }
 

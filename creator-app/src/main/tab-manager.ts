@@ -190,7 +190,8 @@ export class TabManager {
       mode === TunnelMode.HeadlessTelemost ||
       mode === TunnelMode.HeadlessWBStream ||
       mode === TunnelMode.HeadlessDion ||
-      mode === TunnelMode.HeadlessBitrix
+      mode === TunnelMode.HeadlessBitrix ||
+      mode === TunnelMode.HeadlessBlink
     ) return;
     this.launcher.killRelay(tabId, tab);
     setTimeout(() => this.launcher.startRelay(tabId, tab), RELAY_RESTART_DELAY_MS);

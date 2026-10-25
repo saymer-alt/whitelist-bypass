@@ -10,6 +10,7 @@ const PLATFORM_TITLES: Record<Platform, string> = {
   [Platform.WBStream]: 'WBStream',
   [Platform.Dion]: 'DION',
   [Platform.Bitrix]: 'Bitrix',
+  [Platform.Blink]: 'Blink',
 };
 
 export class SavedCallsView {

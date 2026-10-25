@@ -20,6 +20,7 @@ class HeadlessRelayController(
     private val onLog: ParamCallback<String>,
     private val onStatus: ParamCallback<VpnStatus>,
     private val onCaptchaUrl: ParamCallback<String>? = null,
+    private val onLoginLink: ParamCallback<String>? = null,
 ) {
     private var process: Process? = null
     private var thread: Thread? = null
@@ -100,6 +101,11 @@ class HeadlessRelayController(
                                 val captchaUrl = status.removePrefix("CAPTCHA:")
                                 onStatus.invoke(VpnStatus.ACTION_REQUIRED_CAPTCHA)
                                 onCaptchaUrl?.invoke(captchaUrl)
+                            }
+                            status.startsWith("LOGIN_LINK:") -> {
+                                val loginLink = status.removePrefix("LOGIN_LINK:")
+                                onStatus.invoke(VpnStatus.ACTION_REQUIRED_LOGIN)
+                                onLoginLink?.invoke(loginLink)
                             }
                             status.startsWith("ERROR:") -> {
                                 onLog.invoke("Headless relay error: $status")

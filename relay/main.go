@@ -148,6 +148,10 @@ func main() {
 		c := android.NewBitrixHeadlessJoiner(log.Printf)
 		c.OnConnected = newPersistentJoinerBridge(c.MarkConfigAcked)
 		c.Run()
+	case "blink-headless-joiner":
+		c := android.NewBlinkHeadlessJoiner(log.Printf)
+		c.OnConnected = newPersistentJoinerBridge(c.MarkConfigAcked)
+		c.Run()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown mode: %s\n", *mode)
 		os.Exit(1)

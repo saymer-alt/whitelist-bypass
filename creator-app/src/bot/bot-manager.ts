@@ -175,6 +175,7 @@ export class BotManager {
       else if (payload.cmd === BotCommand.WB) cmdPrefix = '/wb';
       else if (payload.cmd === BotCommand.Dion) cmdPrefix = '/dion';
       else if (payload.cmd === BotCommand.Bitrix) cmdPrefix = '/bitrix';
+      else if (payload.cmd === BotCommand.Blink) cmdPrefix = '/blink';
       if (cmdPrefix && payload.mode) {
         text = `${cmdPrefix} ${payload.mode}`;
       }
@@ -198,7 +199,7 @@ export class BotManager {
     if (wasAwaiting) {
       await this.sendMessage(
         peerId,
-        "Couldn't detect a VK / Telemost / WBStream / DION / Bitrix link in that message. Paste a join link or press Back.",
+        "Couldn't detect a VK / Telemost / WBStream / DION / Bitrix / Blink link in that message. Paste a join link or press Back.",
         createWaitingKeyboard(),
       );
       return;
@@ -223,6 +224,9 @@ export class BotManager {
     if (lower.includes('bitrix24') && lower.includes('/video/')) {
       return { platform: Platform.Bitrix, target: trimmed };
     }
+    if (lower.startsWith('blink://') || (lower.includes('blinkmap.com') && lower.includes('/join/'))) {
+      return { platform: Platform.Blink, target: trimmed };
+    }
     if (lower.includes('vk.ru/call/join')) {
       return { platform: Platform.VK, target: trimmed };
     }
@@ -235,6 +239,7 @@ export class BotManager {
       case Platform.WBStream: return TunnelMode.HeadlessWBStream;
       case Platform.Dion: return TunnelMode.HeadlessDion;
       case Platform.Bitrix: return TunnelMode.HeadlessBitrix;
+      case Platform.Blink: return TunnelMode.HeadlessBlink;
       default: return TunnelMode.HeadlessVK;
     }
   }
@@ -245,6 +250,7 @@ export class BotManager {
       case Platform.WBStream: return 'WB Stream';
       case Platform.Dion: return 'DION';
       case Platform.Bitrix: return 'Bitrix';
+      case Platform.Blink: return 'Blink';
       default: return 'VK';
     }
   }
@@ -284,6 +290,7 @@ export class BotManager {
     if (platform === Platform.WBStream) return TunnelMode.HeadlessWBStream;
     if (platform === Platform.Dion) return TunnelMode.HeadlessDion;
     if (platform === Platform.Bitrix) return TunnelMode.HeadlessBitrix;
+    if (platform === Platform.Blink) return TunnelMode.HeadlessBlink;
     if (text.includes('headless')) {
       return platform === Platform.VK ? TunnelMode.HeadlessVK : TunnelMode.HeadlessTelemost;
     }
@@ -298,6 +305,7 @@ export class BotManager {
       case TunnelMode.HeadlessWBStream:
       case TunnelMode.HeadlessDion:
       case TunnelMode.HeadlessBitrix:
+      case TunnelMode.HeadlessBlink:
         return 'Headless';
       case TunnelMode.PionVideo:
         return 'Video';
@@ -332,6 +340,11 @@ export class BotManager {
       console.log('[BOT] Creating Bitrix tab with mode:', mode);
       this.onCreateTab({ mode, peerId, platform: Platform.Bitrix });
       await this.sendMessage(peerId, `Creating Bitrix room (${this.tunnelModeLabel(mode)})`, createMainKeyboard());
+    } else if (text.startsWith('/blink')) {
+      const mode = this.parseTunnelMode(text, Platform.Blink);
+      console.log('[BOT] Creating Blink tab with mode:', mode);
+      this.onCreateTab({ mode, peerId, platform: Platform.Blink });
+      await this.sendMessage(peerId, `Creating Blink room (${this.tunnelModeLabel(mode)})`, createMainKeyboard());
     } else if (text === '/list') {
       await this.showList(peerId);
     } else if (text.startsWith('/close ')) {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 
@@ -22,6 +23,7 @@ const (
 	ClientUserAgent = "web_client (client 0.1.85)"
 	LoginLinkBase   = "https://blinkmap.com/deeplink/webapp/login"
 	JoinLinkScheme  = "blink://"
+	InviteLinkHost  = "blinkmap.com"
 )
 
 var ErrLoginPending = errors.New("blink login is not approved yet")
@@ -63,6 +65,23 @@ func ParseChatID(input string) (int64, error) {
 		return 0, fmt.Errorf("not a Blink chat id: %q", input)
 	}
 	return chatID, nil
+}
+
+func ParseInviteKey(input string) (string, bool) {
+	trimmed := strings.TrimSpace(input)
+	if !strings.Contains(trimmed, "://") {
+		trimmed = "https://" + trimmed
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", false
+	}
+	host := parsed.Hostname()
+	invitePath := strings.TrimRight(parsed.Path, "/")
+	if (host != InviteLinkHost && host != "web."+InviteLinkHost) || !strings.Contains(invitePath, "/join/") {
+		return "", false
+	}
+	return path.Base(invitePath), true
 }
 
 func JoinLink(chatID int64) string {
@@ -203,6 +222,30 @@ func CreateGroupChat(client *http.Client, accessToken string, accountID int64, n
 		return 0, fmt.Errorf("group chat create: no chat_id in %s", common.BodySnippet(raw))
 	}
 	return result.Data.ChatID, nil
+}
+
+func FetchInviteChatID(client *http.Client, accessToken, inviteKey string) (int64, error) {
+	var result struct {
+		ChatID        int64 `json:"chat_id"`
+		AlreadyMember bool  `json:"already_member"`
+	}
+	raw, status, err := apiDo(client, http.MethodGet, "/messenger/v2/chats/invite/"+url.PathEscape(inviteKey)+"/preview", accessToken, nil)
+	if err != nil {
+		return 0, fmt.Errorf("invite preview: %w", err)
+	}
+	if status != http.StatusOK {
+		return 0, &StatusError{Operation: "invite preview", Status: status, Body: common.BodySnippet(raw)}
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return 0, fmt.Errorf("invite preview decode: %w", err)
+	}
+	if result.ChatID <= 0 {
+		return 0, fmt.Errorf("invite preview: no chat_id in %s", common.BodySnippet(raw))
+	}
+	if !result.AlreadyMember {
+		return 0, fmt.Errorf("invite preview: the account is not a member of chat %d, join it in the Blink app first", result.ChatID)
+	}
+	return result.ChatID, nil
 }
 
 func apiDo(client *http.Client, method, path, bearer string, body any) ([]byte, int, error) {

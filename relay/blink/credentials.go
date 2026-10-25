@@ -18,6 +18,9 @@ const (
 	RefreshTokenEntry         = "blink_refresh_token"
 
 	accessTokenRefreshMargin = time.Hour
+	loginPollInterval        = 5 * time.Second
+	loginDefaultTTL          = 600
+	loginRenewFraction       = 0.8
 )
 
 type Credentials struct {
@@ -51,6 +54,18 @@ func SaveTokens(path string, tokens TokenPair) error {
 	})
 }
 
+func LoginToFile(path string, client *http.Client, statusFn func(string), logFn func(string, ...any)) error {
+	tokens, err := waitForLogin(client, statusFn, logFn)
+	if err != nil {
+		return err
+	}
+	if err := SaveTokens(path, tokens); err != nil {
+		return fmt.Errorf("save tokens to %s: %w", path, err)
+	}
+	logFn("[login] approved, tokens saved to %s", path)
+	return nil
+}
+
 func (c *Credentials) AccessToken() (string, error) {
 	if accessTokenFresh(c.tokens) {
 		return c.tokens.Token, nil
@@ -64,6 +79,16 @@ func (c *Credentials) AccessToken() (string, error) {
 func (c *Credentials) ConnectCall(chatID int64) (CallConnection, error) {
 	return withAccessToken(c, "calls connect", func(accessToken string) (CallConnection, error) {
 		return ConnectCall(c.client, accessToken, chatID)
+	})
+}
+
+func (c *Credentials) ResolveChatID(room string) (int64, error) {
+	inviteKey, isInvite := ParseInviteKey(room)
+	if !isInvite {
+		return ParseChatID(room)
+	}
+	return withAccessToken(c, "invite preview", func(accessToken string) (int64, error) {
+		return FetchInviteChatID(c.client, accessToken, inviteKey)
 	})
 }
 
@@ -148,4 +173,32 @@ func readTokens(path string) (TokenPair, error) {
 func accessTokenFresh(tokens TokenPair) bool {
 	expiresIn := time.Until(time.Unix(tokens.TokenExpiresAt, 0))
 	return tokens.Token != "" && expiresIn > accessTokenRefreshMargin
+}
+
+func waitForLogin(client *http.Client, statusFn func(string), logFn func(string, ...any)) (TokenPair, error) {
+	for {
+		request, err := RequestLogin(client)
+		if err != nil {
+			return TokenPair{}, err
+		}
+		link := LoginLink(request.WAT)
+		logFn("[login] open this link on the phone with the Blink app: %s", link)
+		statusFn(common.StatusLoginLink + ":" + link)
+		ttl := request.TTL
+		if ttl <= 0 {
+			ttl = loginDefaultTTL
+		}
+		renewAt := time.Now().Add(time.Duration(float64(ttl)*loginRenewFraction) * time.Second)
+		for time.Now().Before(renewAt) {
+			time.Sleep(loginPollInterval)
+			tokens, err := PollLogin(client, request.WAT)
+			if err == nil {
+				return tokens, nil
+			}
+			if !errors.Is(err, ErrLoginPending) {
+				logFn("[login] poll: %v", err)
+			}
+		}
+		logFn("[login] login link expired, requesting a new one")
+	}
 }

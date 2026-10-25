@@ -233,16 +233,7 @@ func (j *TelemostHeadlessJoiner) isClosed() bool {
 func (j *TelemostHeadlessJoiner) tlsOptions() headless.TLSOptions {
 	return headless.TLSOptions{
 		InsecureSkipVerify: true,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			host, port, _ := net.SplitHostPort(addr)
-			resolvedIP, err := j.ResolveFn(host)
-			if err != nil {
-				return nil, err
-			}
-			dialer := headless.ChromeDialer()
-			dialer.Timeout = 10 * time.Second
-			return dialer.DialContext(ctx, network, resolvedIP+":"+port)
-		},
+		DialContext:        resolvingDialContext(j.ResolveFn),
 	}
 }
 

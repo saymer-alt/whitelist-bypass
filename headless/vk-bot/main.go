@@ -286,7 +286,7 @@ func detectJoinLink(text string) (platform, target string, ok bool) {
 		return "dion", trimmed, true
 	case strings.Contains(lower, "bitrix24") && strings.Contains(lower, "/video/"):
 		return "bitrix", trimmed, true
-	case strings.HasPrefix(lower, "blink://"):
+	case strings.HasPrefix(lower, "blink://"), strings.Contains(lower, "blinkmap.com") && strings.Contains(lower, "/join/"):
 		return "blink", trimmed, true
 	case strings.Contains(lower, "vk.ru/call/join"):
 		return "vk", trimmed, true
