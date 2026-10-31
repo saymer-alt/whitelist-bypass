@@ -329,7 +329,7 @@ func main() {
 			onConnected, addCandidate)
 	case "vk":
 		selfHealReconnect = true
-		runVK(*link, *displayName, *tunnelMode, *vp8FPS, *vp8Batch, *dualTrack,
+		runVK(*link, *displayName, *tunnelMode, *vp8FPS, *vp8Batch, *dualTrack, *reliable,
 			onConnected, addCandidate)
 	case "dion", "dn":
 		runDion(*link, *displayName, onConnected, addCandidate)
@@ -383,7 +383,7 @@ func signalingHosts(platform, link string) []string {
 		}
 		return hosts
 	case "vk":
-		hosts := []string{"vk.ru", "login.vk.ru", "api.vk.ru", "ok.ru", "cloud-api.yandex.ru"}
+		hosts := []string{"vk.ru", "login.vk.ru", "api.vk.ru", "web.api.vk.ru", "ok.ru", "cloud-api.yandex.ru"}
 		if u, err := url.Parse(strings.TrimSpace(link)); err == nil && u.Host != "" {
 			hosts = append(hosts, u.Host)
 		}
@@ -465,7 +465,7 @@ func runTelemost(link, name string, fps, batch int, dualTrack, reliable bool,
 	go inner.RunWithParams(string(params))
 }
 
-func runVK(link, name, mode string, fps, batch int, dualTrack bool,
+func runVK(link, name, mode string, fps, batch int, dualTrack, reliable bool,
 	onConnected func(tunnel.DataTunnel),
 	onCandidate func(int, string),
 ) {
@@ -486,6 +486,7 @@ func runVK(link, name, mode string, fps, batch int, dualTrack bool,
 	authParams["vp8Fps"] = fps
 	authParams["vp8Batch"] = batch
 	authParams["dualTrack"] = dualTrack
+	authParams["reliable"] = reliable
 	patched, err := json.Marshal(authParams)
 	if err != nil {
 		log.Fatalf("[vk] auth marshal: %v", err)
