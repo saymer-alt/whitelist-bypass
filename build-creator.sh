@@ -10,6 +10,7 @@ HEADLESS_TM_DIR="$HEADLESS_DIR/telemost"
 HEADLESS_WB_DIR="$HEADLESS_DIR/wbstream"
 HEADLESS_DION_DIR="$HEADLESS_DIR/dion"
 HEADLESS_BITRIX_DIR="$HEADLESS_DIR/bitrix"
+HEADLESS_BLINK_DIR="$HEADLESS_DIR/blink"
 PREBUILTS="$ROOT/prebuilts"
 
 verify_artifact() {
@@ -29,6 +30,7 @@ stage_darwin_binaries() {
     cp "$HEADLESS_DIR/headless-wbstream-darwin-$darwin_arch" "$HEADLESS_DIR/headless-wbstream-darwin"
     cp "$HEADLESS_DIR/headless-dion-darwin-$darwin_arch" "$HEADLESS_DIR/headless-dion-darwin"
     cp "$HEADLESS_DIR/headless-bitrix-darwin-$darwin_arch" "$HEADLESS_DIR/headless-bitrix-darwin"
+    cp "$HEADLESS_DIR/headless-blink-darwin-$darwin_arch" "$HEADLESS_DIR/headless-blink-darwin"
 }
 
 echo "=== Building relay binaries ==="
@@ -146,7 +148,26 @@ GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$HEADLESS_DIR/he
 echo "Linux x86..."
 GOOS=linux GOARCH=386 go build -trimpath -ldflags="-s -w" -o "$HEADLESS_DIR/headless-bitrix-linux-ia32" .
 
-ls -lh "$HEADLESS_DIR"/headless-vk-darwin-* "$HEADLESS_DIR"/headless-telemost-darwin-* "$HEADLESS_DIR"/headless-wbstream-darwin-* "$HEADLESS_DIR"/headless-dion-darwin-* "$HEADLESS_DIR"/headless-bitrix-darwin-*
+echo ""
+echo "=== Building headless-blink-creator ==="
+cd "$HEADLESS_BLINK_DIR"
+
+echo "macOS x64..."
+GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$HEADLESS_DIR/headless-blink-darwin-amd64" .
+echo "macOS arm64..."
+GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "$HEADLESS_DIR/headless-blink-darwin-arm64" .
+
+echo "Windows x64..."
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$HEADLESS_DIR/headless-blink-windows-x64.exe" .
+echo "Windows x86..."
+GOOS=windows GOARCH=386 go build -trimpath -ldflags="-s -w" -o "$HEADLESS_DIR/headless-blink-windows-ia32.exe" .
+
+echo "Linux x64..."
+GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$HEADLESS_DIR/headless-blink-linux-x64" .
+echo "Linux x86..."
+GOOS=linux GOARCH=386 go build -trimpath -ldflags="-s -w" -o "$HEADLESS_DIR/headless-blink-linux-ia32" .
+
+ls -lh "$HEADLESS_DIR"/headless-vk-darwin-* "$HEADLESS_DIR"/headless-telemost-darwin-* "$HEADLESS_DIR"/headless-wbstream-darwin-* "$HEADLESS_DIR"/headless-dion-darwin-* "$HEADLESS_DIR"/headless-bitrix-darwin-* "$HEADLESS_DIR"/headless-blink-darwin-*
 
 echo ""
 echo "=== Building Electron apps ==="
@@ -182,6 +203,7 @@ cp "$HEADLESS_DIR/headless-telemost-windows-x64.exe" "$HEADLESS_DIR/headless-tel
 cp "$HEADLESS_DIR/headless-wbstream-windows-x64.exe" "$HEADLESS_DIR/headless-wbstream-bundle.exe"
 cp "$HEADLESS_DIR/headless-dion-windows-x64.exe" "$HEADLESS_DIR/headless-dion-bundle.exe"
 cp "$HEADLESS_DIR/headless-bitrix-windows-x64.exe" "$HEADLESS_DIR/headless-bitrix-bundle.exe"
+cp "$HEADLESS_DIR/headless-blink-windows-x64.exe" "$HEADLESS_DIR/headless-blink-bundle.exe"
 rm -f "$PREBUILTS/$PRODUCT_NAME-$APP_VERSION-x64.exe"
 npx electron-builder --win --x64
 verify_artifact "$PRODUCT_NAME-$APP_VERSION-x64.exe"
@@ -195,6 +217,7 @@ cp "$HEADLESS_DIR/headless-telemost-windows-ia32.exe" "$HEADLESS_DIR/headless-te
 cp "$HEADLESS_DIR/headless-wbstream-windows-ia32.exe" "$HEADLESS_DIR/headless-wbstream-bundle.exe"
 cp "$HEADLESS_DIR/headless-dion-windows-ia32.exe" "$HEADLESS_DIR/headless-dion-bundle.exe"
 cp "$HEADLESS_DIR/headless-bitrix-windows-ia32.exe" "$HEADLESS_DIR/headless-bitrix-bundle.exe"
+cp "$HEADLESS_DIR/headless-blink-windows-ia32.exe" "$HEADLESS_DIR/headless-blink-bundle.exe"
 rm -f "$PREBUILTS/$PRODUCT_NAME-$APP_VERSION-ia32.exe"
 npx electron-builder --win --ia32
 verify_artifact "$PRODUCT_NAME-$APP_VERSION-ia32.exe"
@@ -208,6 +231,7 @@ cp "$HEADLESS_DIR/headless-telemost-linux-x64" "$HEADLESS_DIR/headless-telemost-
 cp "$HEADLESS_DIR/headless-wbstream-linux-x64" "$HEADLESS_DIR/headless-wbstream-bundle"
 cp "$HEADLESS_DIR/headless-dion-linux-x64" "$HEADLESS_DIR/headless-dion-bundle"
 cp "$HEADLESS_DIR/headless-bitrix-linux-x64" "$HEADLESS_DIR/headless-bitrix-bundle"
+cp "$HEADLESS_DIR/headless-blink-linux-x64" "$HEADLESS_DIR/headless-blink-bundle"
 rm -f "$PREBUILTS/$PRODUCT_NAME-$APP_VERSION-x86_64.AppImage"
 npx electron-builder --linux --x64
 verify_artifact "$PRODUCT_NAME-$APP_VERSION-x86_64.AppImage"
@@ -225,6 +249,8 @@ rm -f "$HEADLESS_DIR"/headless-dion-darwin* "$HEADLESS_DIR"/headless-dion-window
 rm -f "$HEADLESS_DIR"/headless-dion-bundle "$HEADLESS_DIR"/headless-dion-bundle.exe
 rm -f "$HEADLESS_DIR"/headless-bitrix-darwin* "$HEADLESS_DIR"/headless-bitrix-windows-*.exe "$HEADLESS_DIR"/headless-bitrix-linux-*
 rm -f "$HEADLESS_DIR"/headless-bitrix-bundle "$HEADLESS_DIR"/headless-bitrix-bundle.exe
+rm -f "$HEADLESS_DIR"/headless-blink-darwin* "$HEADLESS_DIR"/headless-blink-windows-*.exe "$HEADLESS_DIR"/headless-blink-linux-*
+rm -f "$HEADLESS_DIR"/headless-blink-bundle "$HEADLESS_DIR"/headless-blink-bundle.exe
 
 "$ROOT/clean-prebuilts.sh"
 

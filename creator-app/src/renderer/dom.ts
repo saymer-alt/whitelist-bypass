@@ -58,6 +58,7 @@ export function renderContent(tm: RendererTabManager): void {
     else if (activeTab.platform === Platform.WBStream) title = 'WBStream';
     else if (activeTab.platform === Platform.Dion) title = 'DION';
     else if (activeTab.platform === Platform.Bitrix) title = 'Bitrix';
+    else if (activeTab.platform === Platform.Blink) title = 'Blink';
     document.getElementById('headlessTitle')!.textContent = title;
     const startEl = document.getElementById('headlessStart')!;
     const statusEl = document.getElementById('headlessStatus')!;
@@ -83,6 +84,9 @@ export function renderContent(tm: RendererTabManager): void {
       } else if (activeTab.platform === Platform.Bitrix) {
         targetLabel.textContent = 'Paste a portal /video/ link, or leave empty to create a new room.';
         targetInput.placeholder = 'https://your-portal.bitrix24.ru/video/CODE';
+      } else if (activeTab.platform === Platform.Blink) {
+        targetLabel.textContent = 'Paste a chat id, blink:// link or group invite link.';
+        targetInput.placeholder = 'https://blinkmap.com/join/<key>';
       } else if (activeTab.platform === Platform.Telemost) {
         targetLabel.textContent = 'Paste a Telemost conference link.';
         targetInput.placeholder = 'https://telemost.yandex.ru/j/...';
@@ -101,12 +105,20 @@ export function renderContent(tm: RendererTabManager): void {
     const callInfoWB = document.getElementById('headlessCallInfoWB')!;
     const callInfoDion = document.getElementById('headlessCallInfoDion')!;
     const callInfoBitrix = document.getElementById('headlessCallInfoBitrix')!;
+    const callInfoBlink = document.getElementById('headlessCallInfoBlink')!;
+    const loginInfo = document.getElementById('headlessLoginInfo')!;
     callInfoVK.style.display = 'none';
     callInfoTM.style.display = 'none';
     callInfoWB.style.display = 'none';
     callInfoDion.style.display = 'none';
     callInfoBitrix.style.display = 'none';
-    if (callInfo) {
+    callInfoBlink.style.display = 'none';
+    loginInfo.style.display = 'none';
+    if (activeTab.loginLink) {
+      loginInfo.style.display = 'block';
+      document.getElementById('headlessLoginLink')!.textContent = activeTab.loginLink;
+      renderHeadlessQr(activeTab.loginLink, `Scan with the ${title} app`);
+    } else if (callInfo) {
       if (activeTab.platform === Platform.WBStream) {
         callInfoWB.style.display = 'block';
         document.getElementById('headlessWBJoinLink')!.textContent = callInfo.joinLink || '';
@@ -120,20 +132,23 @@ export function renderContent(tm: RendererTabManager): void {
       } else if (activeTab.platform === Platform.Bitrix) {
         callInfoBitrix.style.display = 'block';
         document.getElementById('headlessBitrixJoinLink')!.textContent = callInfo.joinLink || '';
+      } else if (activeTab.platform === Platform.Blink) {
+        callInfoBlink.style.display = 'block';
+        document.getElementById('headlessBlinkJoinLink')!.textContent = callInfo.joinLink || '';
       } else {
         callInfoVK.style.display = 'block';
         document.getElementById('headlessJoinLink')!.textContent = callInfo.joinLink || '';
         document.getElementById('headlessTurn')!.textContent = callInfo.turn || '';
         document.getElementById('headlessProtocol')!.textContent = callInfo.protocol || '';
       }
-      renderJoinQr(callInfo.joinLink || '');
+      renderHeadlessQr(callInfo.joinLink || '', 'Scan in the Android app');
     } else {
-      renderJoinQr('');
+      renderHeadlessQr('', '');
     }
   } else {
     toolbar.style.display = 'flex';
     headlessInfo.style.display = 'none';
-    renderJoinQr('');
+    renderHeadlessQr('', '');
     const isVK = activeTab.platform === Platform.VK && activeTab.url.includes('vk.ru');
     const modeSelect = document.getElementById('modeSelect') as HTMLSelectElement;
     const tunnelLabel = document.getElementById('tunnelLabel') as HTMLElement;
@@ -310,7 +325,7 @@ export function exportCookiesZip(): void {
 
 let renderedQrText = '';
 
-function renderJoinQr(link: string): void {
+function renderHeadlessQr(link: string, hint: string): void {
   const wrap = document.getElementById('headlessQrWrap') as HTMLElement | null;
   const image = document.getElementById('headlessQr') as HTMLImageElement | null;
   if (!wrap || !image) return;
@@ -320,6 +335,7 @@ function renderJoinQr(link: string): void {
     image.removeAttribute('src');
     return;
   }
+  document.getElementById('headlessQrHint')!.textContent = hint;
   if (link === renderedQrText) {
     wrap.style.display = 'block';
     return;
