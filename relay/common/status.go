@@ -12,6 +12,7 @@ const (
 	StatusTunnelConnected = "TUNNEL_CONNECTED"
 	StatusTunnelLost      = "TUNNEL_LOST"
 	StatusError           = "ERROR"
+	StatusLoginLink       = "LOGIN_LINK"
 )
 
 const (

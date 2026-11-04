@@ -11,7 +11,7 @@ import {
   HeadlessMode,
   UpstreamProxy,
 } from '../types';
-import { IPC, BITRIX_LOGIN_URL } from '../constants';
+import { IPC, BITRIX_LOGIN_URL, BLINK_AUTH_COOKIE } from '../constants';
 import { BotManager } from '../bot/bot-manager';
 import { DionCookieFile } from './dion-cookie-file';
 import { BitrixCookieFile } from './bitrix-cookie-file';
@@ -48,6 +48,7 @@ async function cookieFileHasCookie(filePath: string, name: string | undefined): 
 export class HeadlessLauncher {
   private relayPath: string;
   private bitrixPath: string;
+  private blinkPath: string;
   private binaryPaths = new Map<Platform, string>();
   private upstreamProxy: UpstreamProxy = { socks: '', user: '', pass: '' };
   private debugLogging = false;
@@ -65,6 +66,10 @@ export class HeadlessLauncher {
     this.bitrixPath = resolveResourcePath(
       path.join('headless', 'bitrix', binaryName('headless-bitrix-creator')),
       binaryName('headless-bitrix-creator'),
+    );
+    this.blinkPath = resolveResourcePath(
+      path.join('headless', 'blink', binaryName('headless-blink-creator')),
+      binaryName('headless-blink-creator'),
     );
     for (const [platform, config] of Object.entries(PLATFORM_CONFIG)) {
       this.binaryPaths.set(
@@ -137,6 +142,10 @@ export class HeadlessLauncher {
   async startHeadless(tabId: string, platform: Platform, args: HeadlessStartArgs): Promise<void> {
     if (platform === Platform.Bitrix) {
       await this.startBitrixHeadless(tabId, args);
+      return;
+    }
+    if (platform === Platform.Blink) {
+      await this.startBlinkHeadless(tabId, args);
       return;
     }
     const tab = await this.host.getOrCreateTab(tabId);
@@ -297,6 +306,71 @@ export class HeadlessLauncher {
       if (authError === 'expired' && !hasPassword) {
         await this.cookies.clearPlatformCookies(Platform.Bitrix);
         if (this.host.getTab(tabId) === tab) this.startBitrixHeadless(tabId, args);
+      }
+    });
+  }
+
+  private async startBlinkHeadless(tabId: string, args: HeadlessStartArgs): Promise<void> {
+    const tab = await this.host.getOrCreateTab(tabId);
+    tab.platform = Platform.Blink;
+    tab.tunnelMode = TunnelMode.HeadlessBlink;
+    const joinTarget = args.mode === HeadlessMode.Join ? (args.target || '').trim() : '';
+    if (args.mode === HeadlessMode.Join && !joinTarget) {
+      this.sendLog(tabId, 'Join requested but no target link/room provided.');
+      return;
+    }
+    const cookiesPath = this.cookies.cookieFilePath(Platform.Blink);
+    if (!(await cookieFileHasCookie(cookiesPath, BLINK_AUTH_COOKIE))) {
+      if (tab.isBot) {
+        const reply = 'Please log into Blink in the creator app first, then try again.';
+        this.sendLog(tabId, reply);
+        if (this.host.botManager && tab.peerId != null) {
+          await this.host.botManager.sendMessage(tab.peerId, reply);
+        }
+        return;
+      }
+      this.sendLog(tabId, 'No Blink session found, opening login. Scan the QR with the Blink app or open the link on the phone.');
+      this.killRelay(tabId, tab);
+      const loginProc = spawn(this.blinkPath, ['--login', '--cookies', cookiesPath], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      tab.relay = loginProc;
+      this.attachProcessOutput(loginProc, tabId);
+      const code = await new Promise<number | null>((resolve) => loginProc.on('close', resolve));
+      if (tab.relay !== loginProc) return;
+      tab.relay = null;
+      const win = this.host.mainWindow;
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(IPC.LOGIN_DONE, { tabId });
+      }
+      if (code !== 0) {
+        this.sendLog(tabId, 'Could not capture the Blink login, try again.');
+        return;
+      }
+      this.sendLog(tabId, 'Blink login captured.');
+    }
+
+    const spawnArgs = ['--resources', 'default', '--cookies', cookiesPath];
+    this.killRelay(tabId, tab);
+    if (joinTarget) {
+      spawnArgs.push('--room', joinTarget);
+    }
+    this.appendEgressArgs(spawnArgs);
+    if (this.debugLogging) spawnArgs.push('--debug');
+    const proc = spawn(this.blinkPath, spawnArgs, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    tab.relay = proc;
+    let authError: AuthErrorKind | null = null;
+    this.attachProcessOutput(proc, tabId, (msg) => {
+      const kind = parseAuthError(msg);
+      if (kind) authError = kind;
+    });
+    proc.on('close', async (code) => {
+      this.sendLog(tabId, `Headless exited with code ${code}`);
+      if (authError === 'expired') {
+        await this.cookies.clearPlatformCookies(Platform.Blink);
+        if (this.host.getTab(tabId) === tab) this.startBlinkHeadless(tabId, args);
       }
     });
   }

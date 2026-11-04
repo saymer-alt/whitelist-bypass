@@ -23,6 +23,12 @@
     <string name="vpn_port_busy" tools:ignore="PluralsCandidate">Port %1$d busy</string>
     <string name="vpn_foreign_active">Another VPN is active. Turn it off first.</string>
     <string name="action_required_captcha">Action required (captcha)</string>
+    <string name="action_required_login">Action required (Blink login)</string>
+    <string name="blink_login_title">Log in to Blink</string>
+    <string name="blink_login_subtitle">Scan the QR with the Blink app on another phone, open the link on this phone, or copy it and send it to whoever has Blink.</string>
+    <string name="blink_login_open">Open in Blink</string>
+    <string name="blink_login_copy">Copy link</string>
+    <string name="blink_login_copied">Login link copied</string>
     <string name="captcha_pill_label">Captcha required / id.vk.com</string>
     <string name="jshook_pill_label">Live / interactive page</string>
     <string name="proxy_settings_title">Proxy</string>
@@ -48,6 +54,7 @@
     <string name="dc_mode_not_supported">DC mode not supported - falling back to video</string>
     <string name="tile_requires_headless_destination">Select a headless destination first</string>
     <string name="tile_vpn_permission_required">Open the app once and grant VPN permission</string>
+    <string name="tile_blink_login_required">Blink login required, connect from the app</string>
 
     <string name="nav_main">Main</string>
     <string name="nav_settings">Settings</string>

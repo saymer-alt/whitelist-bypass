@@ -1,12 +1,22 @@
 export const IPC = {
+  STATE: 'joiner:state',
   START: 'joiner:start',
   STOP: 'joiner:stop',
   LOG: 'joiner:log',
   STATUS: 'joiner:status',
   RUNNING: 'joiner:running',
+  LOGIN_LINK: 'joiner:login-link',
 } as const;
 
-export type JoinerPlatform = 'wbstream' | 'telemost' | 'vk' | 'dion' | 'bitrix';
+export const JOINER_PLATFORMS = ['wbstream', 'telemost', 'vk', 'dion', 'bitrix', 'blink'] as const;
+export type JoinerPlatform = typeof JOINER_PLATFORMS[number];
+export const DUAL_TRACK_PLATFORMS: readonly JoinerPlatform[] = ['vk', 'wbstream', 'bitrix', 'blink'];
+export const RELIABLE_PLATFORMS: readonly JoinerPlatform[] = ['vk', 'telemost', 'wbstream', 'bitrix', 'blink'];
+
+export interface LoginLink {
+  link: string;
+  qr: string;
+}
 
 export interface JoinerSettings {
   platform: JoinerPlatform;

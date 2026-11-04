@@ -5,13 +5,15 @@ enum class CallPlatform(val id: String, val urlMarker: String) {
     TELEMOST("telemost", "telemost"),
     WBSTREAM("wbstream", "wbstream://"),
     DION("dion", "dion://"),
-    BITRIX("bitrix", "/video/");
+    BITRIX("bitrix", "/video/"),
+    BLINK("blink", "blink://");
 
     companion object {
         fun fromUrl(url: String): CallPlatform = when {
             url.contains(DION.urlMarker) || url.contains("dion.vc/event/") -> DION
             url.contains(WBSTREAM.urlMarker) -> WBSTREAM
             url.contains("bitrix24") && url.contains(BITRIX.urlMarker) -> BITRIX
+            url.contains(BLINK.urlMarker) || (url.contains("blinkmap.com") && url.contains("/join/")) -> BLINK
             url.contains(TELEMOST.urlMarker) -> TELEMOST
             else -> VK
         }

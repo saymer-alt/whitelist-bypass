@@ -184,6 +184,12 @@ export class CookieStore {
       console.log(`[COOKIES] cleared ${removed} bitrix cookies`);
       return removed;
     }
+    if (platform === Platform.Blink) {
+      const entries = await this.readBlinkCookies();
+      await fs.unlink(this.cookieFilePath(Platform.Blink)).catch(() => {});
+      console.log(`[COOKIES] cleared ${entries.length} blink cookies`);
+      return entries.length;
+    }
     const config = PLATFORM_CONFIG[platform];
     if (!config) return 0;
     const removed = await this.removeCookiesForDomains(config.cookieDomains);
@@ -208,6 +214,10 @@ export class CookieStore {
       }
     }
     return removed;
+  }
+
+  private async readBlinkCookies(): Promise<unknown[]> {
+    return fs.readFile(this.cookieFilePath(Platform.Blink), 'utf8').then(JSON.parse).catch(() => []);
   }
 
   async getDionCredentials(): Promise<DionCredentials> {
@@ -241,6 +251,8 @@ export class CookieStore {
     });
     const bitrixContent = await new BitrixCookieFile(this.cookieFilePath(Platform.Bitrix)).readRaw();
     entries.push({ name: 'cookies-bitrix.json', data: Buffer.from(JSON.stringify(bitrixContent ?? {}, null, 2), 'utf8') });
+    const blinkContent = await this.readBlinkCookies();
+    entries.push({ name: 'cookies-blink.json', data: Buffer.from(JSON.stringify(blinkContent, null, 2), 'utf8') });
     return buildStoredZip(entries);
   }
 

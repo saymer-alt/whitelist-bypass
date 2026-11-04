@@ -8,6 +8,7 @@ export enum TunnelMode {
   HeadlessWBStream = 'headless-wbstream',
   HeadlessDion = 'headless-dion',
   HeadlessBitrix = 'headless-bitrix',
+  HeadlessBlink = 'headless-blink',
 }
 
 export enum Platform {
@@ -16,6 +17,7 @@ export enum Platform {
   WBStream = 'wbstream',
   Dion = 'dion',
   Bitrix = 'bitrix',
+  Blink = 'blink',
 }
 
 export enum RelayMode {
@@ -35,6 +37,7 @@ export enum BotCommand {
   WB = 'wb',
   Dion = 'dion',
   Bitrix = 'bitrix',
+  Blink = 'blink',
   JoinPrompt = 'join-prompt',
   List = 'list',
   Menu = 'menu',
@@ -158,6 +161,7 @@ export interface RendererTab {
   callInfo?: CallInfo;
   tunnelConnected?: boolean;
   loginWebview?: Webview;
+  loginLink?: string;
   joinedByLink?: boolean;
 }
 
