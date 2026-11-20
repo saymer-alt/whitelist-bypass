@@ -67,6 +67,7 @@ function bindToolbarEvents(): void {
   document.getElementById('btnHeadlessWB')!.addEventListener('click', () => tm.switchToHeadless(Platform.WBStream));
   document.getElementById('btnHeadlessDion')!.addEventListener('click', () => tm.switchToHeadless(Platform.Dion));
   document.getElementById('btnHeadlessBitrix')!.addEventListener('click', () => tm.switchToHeadless(Platform.Bitrix));
+  document.getElementById('btnHeadlessBlink')!.addEventListener('click', () => tm.switchToHeadless(Platform.Blink));
   document.getElementById('modeSelect')!.addEventListener('change', (event) => {
     tm.setTunnelMode((event.target as HTMLSelectElement).value);
   });
@@ -318,6 +319,8 @@ function init(): void {
       tm.switchToHeadless(Platform.Dion, data.joinTarget);
     } else if (data.mode === TunnelMode.HeadlessBitrix) {
       tm.switchToHeadless(Platform.Bitrix, data.joinTarget);
+    } else if (data.mode === TunnelMode.HeadlessBlink) {
+      tm.switchToHeadless(Platform.Blink, data.joinTarget);
     } else {
       const url = data.platform === Platform.Telemost ? TELEMOST_URL : VK_IM_URL;
       loadURL(tm, url);
@@ -343,6 +346,7 @@ function init(): void {
     const tab = tm.tabs[tabId];
     if (!tab) return;
     detachLoginWebview(tm, tabId);
+    tab.loginLink = undefined;
     tab.headlessStatus = 'Starting...';
     if (tabId === tm.activeTabId) renderContent(tm);
   });

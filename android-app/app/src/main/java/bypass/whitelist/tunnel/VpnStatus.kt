@@ -16,5 +16,6 @@ enum class VpnStatus(@StringRes val labelRes: Int) {
     CALL_FAILED(R.string.vpn_call_failed),
     PORT_BUSY(R.string.vpn_port_busy),
     VPN_CONFLICT(R.string.vpn_foreign_active),
-    ACTION_REQUIRED_CAPTCHA(R.string.action_required_captcha)
+    ACTION_REQUIRED_CAPTCHA(R.string.action_required_captcha),
+    ACTION_REQUIRED_LOGIN(R.string.action_required_login)
 }

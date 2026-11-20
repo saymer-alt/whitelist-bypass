@@ -30,6 +30,8 @@ const vkTopologyDirect = "DIRECT"
 
 const vkOrigin = "https://vk.ru"
 
+var errVKServerTopology = errors.New("VK moved this call to server topology, it cannot be tunneled, create a new call and connect again")
+
 type vkAuthRottenError struct {
 	Code string
 	Msg  string
@@ -54,6 +56,7 @@ type VKHeadlessAuthParams struct {
 	VP8FPS          int    `json:"vp8Fps"`
 	VP8Batch        int    `json:"vp8Batch"`
 	DualTrack       bool   `json:"dualTrack"`
+	Reliable        bool   `json:"reliable"`
 }
 
 type VKJoinResponse struct {
@@ -102,11 +105,13 @@ type VKHeadlessJoiner struct {
 	vp8FPS         int
 	vp8Batch       int
 	dualTrack      bool
+	reliable       bool
 	remoteSet      bool
 	pendingICE     []webrtc.ICECandidateInit
 
 	configAck        configAckTracker
 	reconnectAttempt atomic.Int32
+	serverTopology   atomic.Bool
 	stopCh           chan struct{}
 	stopOnce         sync.Once
 }
@@ -141,10 +146,11 @@ func (h *VKHeadlessJoiner) RunWithParams(jsonParams string) {
 	h.vp8FPS = params.VP8FPS
 	h.vp8Batch = params.VP8Batch
 	// h.dualTrack = params.DualTrack // temporarily disabled for VK joiners
+	h.reliable = params.Reliable
 	h.logFn("vk-joiner: auth params received")
 	h.logFn("vk-joiner: obf key-source=%q localEpoch=0x%08x", params.JoinLink, obf.LocalEpoch())
-	h.logFn("vk-joiner:   appVersion=%s protocolVersion=%s vp8Fps=%d vp8Batch=%d",
-		params.AppVersion, params.ProtocolVersion, params.VP8FPS, params.VP8Batch)
+	h.logFn("vk-joiner:   appVersion=%s protocolVersion=%s vp8Fps=%d vp8Batch=%d reliable=%v",
+		params.AppVersion, params.ProtocolVersion, params.VP8FPS, params.VP8Batch, params.Reliable)
 
 	h.Status.EmitStatus(common.StatusConnecting)
 	if err := h.runOnce(); err != nil {
@@ -174,7 +180,7 @@ func (h *VKHeadlessJoiner) RunWithParams(jsonParams string) {
 		h.Status.EmitStatus(common.StatusReconnecting)
 		if err := h.runOnce(); err != nil {
 			var authRotten *vkAuthRottenError
-			if errors.As(err, &authRotten) {
+			if errors.As(err, &authRotten) || errors.Is(err, errVKServerTopology) {
 				h.logFn("vk-joiner: %v, surrendering", err)
 				h.Status.EmitStatusError("call failed: " + err.Error())
 				return
@@ -190,6 +196,9 @@ func (h *VKHeadlessJoiner) runOnce() error {
 		return err
 	}
 	h.connectSFU()
+	if h.serverTopology.Load() {
+		return errVKServerTopology
+	}
 	return nil
 }
 
@@ -259,6 +268,12 @@ func (h *VKHeadlessJoiner) Close() {
 	}
 }
 
+func (h *VKHeadlessJoiner) failForServerTopology(reason string) {
+	h.logFn("vk-joiner: %s -> %v", reason, errVKServerTopology)
+	h.serverTopology.Store(true)
+	h.closeTransport()
+}
+
 func (h *VKHeadlessJoiner) closeTransport() {
 	h.vkMu.Lock()
 	sfu := h.sfu
@@ -293,7 +308,7 @@ func (h *VKHeadlessJoiner) joinCall() error {
 		"isVideo":         {"true"},
 		"isAudio":         {"false"},
 		"mediaSettings":   {`{"isAudioEnabled":false,"isVideoEnabled":true,"isScreenSharingEnabled":` + screenFlag + `}`},
-		"format":          {"json"},
+		"format":          {"JSON"},
 	}
 
 	client := &http.Client{
@@ -314,8 +329,11 @@ func (h *VKHeadlessJoiner) joinCall() error {
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
 	}
+	req.Header = headless.ChromeWindows.Headers(headless.DestEmpty)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", headless.ChromeWindows.UserAgent())
+	req.Header.Set("Origin", vkOrigin)
+	req.Header.Set("Referer", vkOrigin+"/")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
 
 	h.logFn("vk-joiner: calling joinConversationByLink...")
 	resp, err := client.Do(req)
@@ -459,7 +477,9 @@ func (h *VKHeadlessJoiner) readLoop() {
 		msg, err := sfu.Recv()
 		if err != nil {
 			h.logFn("vk-joiner: WebTransport closed: %s", common.MaskError(err))
-			h.Status.EmitStatus(common.StatusTunnelLost)
+			if !h.serverTopology.Load() {
+				h.Status.EmitStatus(common.StatusTunnelLost)
+			}
 			return
 		}
 		if string(msg) == "ping" {
@@ -499,8 +519,7 @@ func (h *VKHeadlessJoiner) handleVKMessage(raw []byte) {
 			topo, _ := msg["topology"].(string)
 			h.logFn("vk-joiner: topology: %s", topo)
 			if topo != "" && topo != vkTopologyDirect {
-				h.logFn("vk-joiner: %s topology -> closing transport to reconnect and recover DIRECT", topo)
-				h.closeTransport()
+				h.failForServerTopology(topo + " topology")
 			}
 		case "participant-joined", "participant-added":
 			h.logFn("vk-joiner: <- %s", notif)
@@ -526,6 +545,10 @@ func (h *VKHeadlessJoiner) handleConnection(msg map[string]interface{}) {
 	if conv, ok := msg["conversation"].(map[string]interface{}); ok {
 		topo, _ := conv["topology"].(string)
 		h.logFn("vk-joiner: connection topology=%q", topo)
+		if topo != "" && topo != vkTopologyDirect {
+			h.failForServerTopology("joined under " + topo)
+			return
+		}
 	}
 	convParams, ok := msg["conversationParams"].(map[string]interface{})
 	if !ok {
@@ -618,7 +641,7 @@ func (h *VKHeadlessJoiner) initPC() {
 				h.logFn("vk-joiner: === DC TUNNEL CONNECTED ===")
 				h.Status.EmitStatus(common.StatusTunnelConnected)
 				if h.OnConnected != nil {
-					h.OnConnected(rtc.NewDCTunnel(dc, h.obf, common.RTPBufSize, h.logFn))
+					h.OnConnected(rtc.NewDCTunnel(dc, h.obf, common.RTPBufSize, common.MaxDCBufSize, h.logFn))
 				}
 			}
 		})
@@ -647,7 +670,11 @@ func (h *VKHeadlessJoiner) initPC() {
 			h.vp8tunnel.Start(h.vp8FPS, h.vp8Batch)
 			var downlink tunnel.DataTunnel = h.vp8tunnel
 			trackCount := 1
-			if h.dualTrack {
+			if h.reliable {
+				mt := rtc.NewMultiTrackTunnel([]*rtc.VP8DataTunnel{h.vp8tunnel})
+				downlink = rtc.NewMultiTrackKCPTunnel(mt, h.logFn)
+				h.logFn("vk-joiner: per-track kcp reliability active over video tunnel")
+			} else if h.dualTrack {
 				writer := rtc.NewScreenWriter(h.obf, "screen-up", h.logFn)
 				writer.Reconfigure(h.vp8tunnel.FPS(), h.vp8tunnel.Batch())
 				writer.SetSend(h.producerScreen.send)
@@ -660,7 +687,7 @@ func (h *VKHeadlessJoiner) initPC() {
 			vp8tun := h.vp8tunnel
 			if !h.configAck.acknowledged() {
 				acked, cancel := h.configAck.arm()
-				go tunnel.SendVP8ConfigUntilAcked(acked, cancel, h.stopCh, vp8tun,
+				go tunnel.SendVP8ConfigUntilAcked(acked, cancel, h.stopCh, downlink,
 					vp8tun.FPS(), vp8tun.Batch(), trackCount, h.logFn, "vk-joiner")
 				h.logFn("vk-joiner: pushed vp8 config to creator fps=%d batch=%d trackCount=%d", vp8tun.FPS(), vp8tun.Batch(), trackCount)
 			}

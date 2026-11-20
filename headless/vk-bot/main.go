@@ -56,6 +56,7 @@ type session struct {
 	platform string
 	link     string
 	cmd      *exec.Cmd
+	exited   chan struct{}
 	started  time.Time
 	logPath  string
 }
@@ -70,6 +71,7 @@ type bot struct {
 	wbCookies     string
 	dionCookies   string
 	bitrixCookies string
+	blinkCookies  string
 	sessionsDir   string
 	resources     string
 
@@ -213,7 +215,7 @@ func (b *bot) handleMessage(peerID, fromID int64, text, payload string) {
 			delete(b.awaitingJoin, peerID)
 			b.mu.Unlock()
 			switch p.Cmd {
-			case "vk", "tm", "wb", "dion", "bitrix":
+			case "vk", "tm", "wb", "dion", "bitrix", "blink":
 				b.handleSpawn(peerID, p.Cmd, "")
 				return
 			case "list":
@@ -242,7 +244,7 @@ func (b *bot) handleMessage(peerID, fromID int64, text, payload string) {
 		return
 	}
 	if wasAwaiting {
-		b.sendMessage(peerID, "Couldn't detect a VK / Telemost / WBStream / DION / Bitrix link. Paste a join link or press Back.", waitingKeyboard())
+		b.sendMessage(peerID, "Couldn't detect a VK / Telemost / WBStream / DION / Bitrix / Blink link. Paste a join link or press Back.", waitingKeyboard())
 		return
 	}
 
@@ -259,6 +261,8 @@ func (b *bot) handleMessage(peerID, fromID int64, text, payload string) {
 		b.handleSpawn(peerID, "dion", "")
 	case strings.HasPrefix(text, "/bitrix"):
 		b.handleSpawn(peerID, "bitrix", "")
+	case strings.HasPrefix(text, "/blink"):
+		b.handleSpawn(peerID, "blink", "")
 	case text == "/list":
 		b.handleList(peerID)
 	case strings.HasPrefix(text, "/close "):
@@ -282,6 +286,8 @@ func detectJoinLink(text string) (platform, target string, ok bool) {
 		return "dion", trimmed, true
 	case strings.Contains(lower, "bitrix24") && strings.Contains(lower, "/video/"):
 		return "bitrix", trimmed, true
+	case strings.HasPrefix(lower, "blink://"), strings.Contains(lower, "blinkmap.com") && strings.Contains(lower, "/join/"):
+		return "blink", trimmed, true
 	case strings.Contains(lower, "vk.ru/call/join"):
 		return "vk", trimmed, true
 	}
@@ -337,6 +343,10 @@ func (b *bot) spawn(platform, joinTarget string) (*session, error) {
 	case "bitrix":
 		binName = "headless-bitrix-creator"
 		cookies = b.bitrixCookies
+		joinFlag = "--room"
+	case "blink":
+		binName = "headless-blink-creator"
+		cookies = b.blinkCookies
 		joinFlag = "--room"
 	default:
 		return nil, fmt.Errorf("unknown platform: %s", platform)
@@ -407,18 +417,27 @@ func (b *bot) spawn(platform, joinTarget string) (*session, error) {
 		log.Printf("[bot] spawned %s id=%s pid=%d", platform, id, cmd.Process.Pid)
 	}
 
-	link, err := waitForLink(linkFile.Name(), spawnTimeout)
+	exited := make(chan struct{})
+	go func() {
+		cmd.Wait()
+		close(exited)
+	}()
+
+	link, err := waitForLink(linkFile.Name(), spawnTimeout, exited)
 	if err != nil {
 		cmd.Process.Kill()
-		cmd.Wait()
+		<-exited
 		if logF != nil {
 			logF.Close()
+		}
+		if lastLine := lastLogLine(logPath); lastLine != "" {
+			err = fmt.Errorf("%w: %s", err, lastLine)
 		}
 		return nil, err
 	}
 
 	sess := &session{
-		id: id, platform: platform, link: link, cmd: cmd,
+		id: id, platform: platform, link: link, cmd: cmd, exited: exited,
 		started: time.Now(), logPath: logPath,
 	}
 	b.mu.Lock()
@@ -428,7 +447,7 @@ func (b *bot) spawn(platform, joinTarget string) (*session, error) {
 	return sess, nil
 }
 
-func waitForLink(path string, timeout time.Duration) (string, error) {
+func waitForLink(path string, timeout time.Duration, exited <-chan struct{}) (string, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		data, err := os.ReadFile(path)
@@ -439,14 +458,31 @@ func waitForLink(path string, timeout time.Duration) (string, error) {
 				return line, nil
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-exited:
+			os.Remove(path)
+			return "", fmt.Errorf("creator exited before writing the link")
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 	os.Remove(path)
 	return "", fmt.Errorf("creator did not write link within %s", timeout)
 }
 
+func lastLogLine(path string) string {
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
+}
+
 func (b *bot) watchSession(sess *session, logF *os.File) {
-	sess.cmd.Wait()
+	<-sess.exited
 	if logF != nil {
 		logF.Close()
 	}
@@ -518,6 +554,7 @@ func main() {
 	wbCookies := flag.String("wb-cookies", "", "path to WB Stream cookies JSON")
 	dionCookies := flag.String("dion-cookies", "", "path to DION cookies JSON")
 	bitrixCookies := flag.String("bitrix-cookies", "", "path to Bitrix cookies JSON")
+	blinkCookies := flag.String("blink-cookies", "", "path to Blink cookies JSON")
 	sessionsDir := flag.String("sessions-dir", "", "directory for per-session creator logs (optional)")
 	resources := flag.String("resources", "default", "resource mode forwarded to spawned creators: default, moderate, unlimited")
 	upstreamSocks := flag.String("upstream-socks", "", "forward to spawned creators: route tunneled egress through this SOCKS5 proxy (host:port), e.g. a local VPN client")
@@ -562,6 +599,7 @@ func main() {
 		wbCookies:        *wbCookies,
 		dionCookies:      *dionCookies,
 		bitrixCookies:    *bitrixCookies,
+		blinkCookies:     *blinkCookies,
 		sessionsDir:      *sessionsDir,
 		resources:        *resources,
 		upstreamSocks:    *upstreamSocks,

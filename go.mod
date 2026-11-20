@@ -13,7 +13,6 @@ require (
 	golang.org/x/crypto v0.51.0
 	golang.org/x/mobile v0.0.0-20260508232728-bebd421c7fa8
 	golang.org/x/sys v0.45.0
-	rsc.io/qr v0.2.0
 )
 
 require (

@@ -80,6 +80,10 @@ export class RendererTabManager {
         tab.mode = TunnelMode.HeadlessBitrix;
         if (!tab.isBot) tab.name = 'Bitrix';
         break;
+      case Platform.Blink:
+        tab.mode = TunnelMode.HeadlessBlink;
+        if (!tab.isBot) tab.name = 'Blink';
+        break;
       default:
         tab.mode = TunnelMode.HeadlessVK;
         if (!tab.isBot) tab.name = 'VK';
@@ -88,6 +92,7 @@ export class RendererTabManager {
     tab.headlessStarted = false;
     tab.platform = platform;
     tab.callInfo = undefined;
+    tab.loginLink = undefined;
     tab.headlessStatus = undefined;
     tab.tunnelConnected = false;
     tab.relayLogs = '';
@@ -109,6 +114,7 @@ export class RendererTabManager {
     tab.headlessStarted = true;
     tab.headlessStatus = 'Starting...';
     tab.callInfo = undefined;
+    tab.loginLink = undefined;
     window.bridge.startHeadless(this.activeTabId, tab.platform, args);
     this.onRender();
   }
@@ -120,12 +126,14 @@ export class RendererTabManager {
         data.mode === TunnelMode.HeadlessTelemost ||
         data.mode === TunnelMode.HeadlessWBStream ||
         data.mode === TunnelMode.HeadlessDion ||
-        data.mode === TunnelMode.HeadlessBitrix;
+        data.mode === TunnelMode.HeadlessBitrix ||
+        data.mode === TunnelMode.HeadlessBlink;
       let platformName = 'VK';
       if (data.platform === Platform.Telemost) platformName = 'Telemost';
       else if (data.platform === Platform.WBStream) platformName = 'WBStream';
       else if (data.platform === Platform.Dion) platformName = 'DION';
       else if (data.platform === Platform.Bitrix) platformName = 'Bitrix';
+      else if (data.platform === Platform.Blink) platformName = 'Blink';
       const botName = isHeadless ? `Bot-${platformName}` : `Bot-${platformName} (legacy)`;
       this.tabs[data.tabId] = {
         wv: null,
@@ -223,6 +231,11 @@ export class RendererTabManager {
     }
     if (trimmed.includes(HeadlessLogMarker.PROTOCOL) && tab.callInfo) {
       tab.callInfo.protocol = trimmed.split(HeadlessLogMarker.PROTOCOL)[1].trim();
+      changed = true;
+    }
+    if (trimmed.includes(HeadlessLogMarker.LOGIN_LINK)) {
+      tab.loginLink = trimmed.split(HeadlessLogMarker.LOGIN_LINK)[1].trim();
+      tab.headlessStatus = 'Waiting for login...';
       changed = true;
     }
     if (trimmed.includes('[FATAL]')) {

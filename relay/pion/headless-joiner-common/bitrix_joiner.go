@@ -1,16 +1,13 @@
 package joiner
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	headless "github.com/kulikov0/headless-client"
 	"github.com/kulikov0/headless-client/webrtc"
@@ -185,7 +182,7 @@ func (j *BitrixHeadlessJoiner) runOnce() error {
 		UserAgent:              userAgent,
 		LogFn:                  j.logFn,
 		ConfigureSettingEngine: configureSettingEngine,
-		NetDialContext:         j.makeDialContext(),
+		NetDialContext:         resolvingDialContext(j.ResolveFn),
 		OnConnected: func() {
 			once.Do(func() { close(connected) })
 		},
@@ -251,28 +248,9 @@ func (j *BitrixHeadlessJoiner) runOnce() error {
 	return nil
 }
 
-func (j *BitrixHeadlessJoiner) makeDialContext() func(ctx context.Context, network, addr string) (net.Conn, error) {
-	if j.ResolveFn == nil {
-		return nil
-	}
-	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, err
-		}
-		resolvedIP, err := j.ResolveFn(host)
-		if err != nil {
-			return nil, err
-		}
-		dialer := headless.ChromeDialer()
-		dialer.Timeout = 10 * time.Second
-		return dialer.DialContext(ctx, network, resolvedIP+":"+port)
-	}
-}
-
 func (j *BitrixHeadlessJoiner) makeTransport() http.RoundTripper {
 	return headless.ChromeWindows.Transport(headless.TLSOptions{
-		DialContext:        j.makeDialContext(),
+		DialContext:        resolvingDialContext(j.ResolveFn),
 		InsecureSkipVerify: true,
 	})
 }

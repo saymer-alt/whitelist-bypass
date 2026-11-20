@@ -18,9 +18,9 @@ import (
 
 func main() {
 	common.MaybePrintVersion()
-	roomFlag := flag.String("room", "", "Blink chat id or blink://<chat id> printed by the creator (required)")
+	roomFlag := flag.String("room", "", "Blink chat id, blink://<chat id> printed by the creator or group invite link (required)")
 	cookiesPath := flag.String("cookies", "", "path to the joiner's own Blink login file, e.g. cookies-blink-joiner.json")
-	loginFlag := flag.Bool("login", false, "log in with a QR code, save the tokens to --cookies and exit")
+	loginFlag := flag.Bool("login", false, "log in through the Blink app, save the tokens to --cookies and exit")
 	socksHost := flag.String("socks-host", common.SocksLocalhostIP, "SOCKS5 listen address (use 0.0.0.0 to expose on LAN)")
 	socksPort := flag.Int("socks-port", 1080, "SOCKS5 listen port")
 	socksUser := flag.String("socks-user", "", "SOCKS5 username (optional)")
@@ -39,7 +39,7 @@ func main() {
 		log.Fatal("--cookies is required")
 	}
 	if *loginFlag {
-		if err := blink.LoginToFile(*cookiesPath, nil, os.Stdout, log.Printf); err != nil {
+		if err := blink.LoginToFile(*cookiesPath, nil, nil, common.EmitStatus, log.Printf); err != nil {
 			log.Fatalf("[login] %v", err)
 		}
 		return
@@ -63,13 +63,13 @@ func main() {
 		debug.SetMemoryLimit(memLimit)
 	}
 
-	chatID, err := blink.ParseChatID(*roomFlag)
-	if err != nil {
-		log.Fatalf("[config] --room: %v", err)
-	}
 	credentials, err := blink.LoadCredentials(*cookiesPath, nil, log.Printf)
 	if err != nil {
 		log.Fatalf("[auth] %v", err)
+	}
+	chatID, err := credentials.ResolveChatID(*roomFlag)
+	if err != nil {
+		log.Fatalf("[config] --room: %v", err)
 	}
 	connection, err := credentials.ConnectCall(chatID)
 	if err != nil {

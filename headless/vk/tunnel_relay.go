@@ -31,12 +31,15 @@ type TunnelRelay struct {
 	externalICE func(*webrtc.ICECandidate)
 	externalCSC func(webrtc.PeerConnectionState)
 
-	dc    *webrtc.DataChannel
-	dcMu  sync.Mutex
-	conns sync.Map
+	dc         *webrtc.DataChannel
+	dcMu       sync.Mutex
+	dcFlowGate *rtc.DCFlowGate
+	conns      sync.Map
 
 	sampleTrack *webrtc.TrackLocalStaticSample
 	tun         *rtc.VP8DataTunnel
+	tunMu       sync.Mutex
+	tunFired    bool
 	obf         *tunnel.TunnelObfuscator
 	OnConnected func(tunnel.DataTunnel)
 
@@ -83,6 +86,7 @@ func (u *TunnelRelay) Init(iceServers []webrtc.ICEServer) error {
 		log.Printf("[relay] warning: could not create tunnel DC: %v", err)
 	} else {
 		u.dc = dc
+		u.dcFlowGate = rtc.NewDCFlowGate(dc, u.maxDCBuf)
 		dc.OnOpen(func() {
 			log.Printf("[relay] tunnel DC open (readyState=%v)", dc.ReadyState())
 		})
@@ -171,20 +175,7 @@ func (u *TunnelRelay) Init(iceServers []webrtc.ICEServer) error {
 			log.Println("[relay] === MODE: VIDEO ===")
 			u.tun = rtc.NewVP8DataTunnel(sampleTrack, u.obf, log.Printf)
 			u.tun.Start(0, 0)
-			var downlink tunnel.DataTunnel = u.tun
-			if u.screenDC != nil {
-				writer := rtc.NewScreenWriter(u.obf, "screen-down", log.Printf)
-				dc := u.screenDC
-				writer.SetSend(dc.Send)
-				u.sym = rtc.NewSymmetricScreenTunnel(u.tun, writer, u.obf, func() bool {
-					return dc.ReadyState() == webrtc.DataChannelStateOpen
-				}, log.Printf)
-				downlink = u.sym
-				log.Println("[relay] === MODE: VIDEO (with screenshare) ===")
-			}
-			if u.OnConnected != nil {
-				u.OnConnected(downlink)
-			}
+			u.tun.SetOnData(u.activate)
 		})
 		go u.readTrack(track)
 	})
@@ -266,6 +257,40 @@ func (u *TunnelRelay) Close() {
 	u.sampleTrack = nil
 }
 
+func (u *TunnelRelay) activate(payload []byte) {
+	u.tunMu.Lock()
+	if u.tunFired || u.OnConnected == nil {
+		u.tunMu.Unlock()
+		return
+	}
+	u.tunFired = true
+	u.tunMu.Unlock()
+
+	if !tunnel.LooksLikeRelayFrame(payload) {
+		kcptun := rtc.NewMultiTrackKCPTunnel(rtc.NewMultiTrackTunnel([]*rtc.VP8DataTunnel{u.tun}), log.Printf)
+		log.Println("[relay] per-track kcp reliability active over video tunnel")
+		log.Printf("[relay] auto-detected active tunnel: %T", kcptun)
+		u.OnConnected(kcptun)
+		kcptun.InjectSegment(payload)
+		return
+	}
+
+	var downlink tunnel.DataTunnel = u.tun
+	if u.screenDC != nil {
+		writer := rtc.NewScreenWriter(u.obf, "screen-down", log.Printf)
+		dc := u.screenDC
+		writer.SetSend(dc.Send)
+		u.sym = rtc.NewSymmetricScreenTunnel(u.tun, writer, u.obf, func() bool {
+			return dc.ReadyState() == webrtc.DataChannelStateOpen
+		}, log.Printf)
+		downlink = u.sym
+		log.Println("[relay] === MODE: VIDEO (with screenshare) ===")
+	}
+	log.Printf("[relay] auto-detected active tunnel: %T", downlink)
+	u.OnConnected(downlink)
+	u.tun.OnData(payload)
+}
+
 func (u *TunnelRelay) handleDCMessage(data []byte) {
 	if u.obf != nil {
 		pt, ok := u.obf.DecryptPayload(data)
@@ -313,6 +338,10 @@ func (u *TunnelRelay) handleDCMessage(data []byte) {
 }
 
 func (u *TunnelRelay) sendDCFrame(connID uint32, mt byte, payload []byte) {
+	if mt == tunnel.MsgData && u.dcFlowGate != nil {
+		u.dcFlowGate.Acquire()
+		defer u.dcFlowGate.Release()
+	}
 	u.dcMu.Lock()
 	defer u.dcMu.Unlock()
 	if u.dc == nil {
@@ -370,16 +399,6 @@ func (u *TunnelRelay) connectTCP(connID uint32, addr string) {
 	buf := make([]byte, bufSz)
 	sent := 0
 	for {
-		if u.maxDCBuf > 0 {
-			u.dcMu.Lock()
-			dc := u.dc
-			u.dcMu.Unlock()
-			if dc != nil {
-				for dc.BufferedAmount() > u.maxDCBuf {
-					time.Sleep(5 * time.Millisecond)
-				}
-			}
-		}
 		n, err := conn.Read(buf)
 		if n > 0 {
 			u.sendDCFrame(connID, tunnel.MsgData, buf[:n])

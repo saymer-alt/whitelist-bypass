@@ -32,6 +32,7 @@ export const DION_AUTH_COOKIE = 'vc-refresh-token';
 export const WBSTREAM_ACCESS_TOKEN_COOKIE = 'wb_access_token';
 export const BITRIX_SESSION_COOKIE = 'BITRIX_SM_UIDH';
 export const BITRIX_AUTH_NET_HOST = 'https://auth2.bitrix24.net';
+export const BLINK_AUTH_COOKIE = 'blink_refresh_token';
 
 export const SESSION_PARTITION = 'persist:creator';
 export const WINDOW_WIDTH = 1200;
@@ -114,4 +115,5 @@ export enum HeadlessLogMarker {
   TURN = 'TURN:',
   PROTOCOL = 'protocol:',
   TUNNEL_CONNECTED = 'TUNNEL CONNECTED',
+  LOGIN_LINK = 'STATUS:LOGIN_LINK:',
 }

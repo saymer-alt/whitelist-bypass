@@ -22,6 +22,7 @@ data class CallConfig(
         CallPlatform.WBSTREAM -> "WB"
         CallPlatform.DION -> "DN"
         CallPlatform.BITRIX -> "BX"
+        CallPlatform.BLINK -> "BL"
     }
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -76,6 +77,7 @@ data class CallConfig(
                 CallPlatform.WBSTREAM -> "WB Stream"
                 CallPlatform.DION -> "DION"
                 CallPlatform.BITRIX -> "Bitrix"
+                CallPlatform.BLINK -> "Blink"
             }
             return label
         }

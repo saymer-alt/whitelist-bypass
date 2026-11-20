@@ -6,10 +6,12 @@ import android.util.Log
 import bypass.whitelist.ui.JoinFragmentHost
 import bypass.whitelist.util.Prefs
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 class HeadlessJoinController(
     nativeLibraryDir: String,
+    private val filesDir: File,
     private val host: JoinFragmentHost,
     private val platform: CallPlatform,
     private val url: String,
@@ -22,6 +24,7 @@ class HeadlessJoinController(
         relayMode = "${platform.id}-headless-joiner",
         onLog = { host.appendLog(it) },
         onStatus = ::handleStatus,
+        onLoginLink = { host.onLoginLink(it) },
     )
 
     fun start() {
@@ -65,6 +68,11 @@ class HeadlessJoinController(
                 put("tunnelMode", Prefs.activeTunnelMode.relayArg)
             }
             CallPlatform.DION -> put("roomId", CallPlatform.extractRoomId(url))
+            CallPlatform.BLINK -> {
+                put("joinLink", url)
+                put("tunnelMode", Prefs.activeTunnelMode.relayArg)
+                put("cookiesPath", File(filesDir, BLINK_COOKIES_FILE).absolutePath)
+            }
             CallPlatform.VK -> error("VK headless flow uses HeadlessVkFragment for captcha UI")
         }
     }
@@ -76,5 +84,6 @@ class HeadlessJoinController(
 
     private companion object {
         const val LOG_TAG = "HeadlessJoinController"
+        const val BLINK_COOKIES_FILE = "cookies-blink.json"
     }
 }

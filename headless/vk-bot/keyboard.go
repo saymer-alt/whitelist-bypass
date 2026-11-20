@@ -29,6 +29,8 @@ func platformSquare(platform string) string {
 		return "🟩"
 	case "bitrix":
 		return "🟧"
+	case "blink":
+		return "🟨"
 	}
 	return ""
 }
@@ -47,6 +49,7 @@ func mainMenuKeyboard() string {
 			},
 			{
 				{Action: kbAction{Type: "text", Label: "🟧 Bitrix", Payload: `{"cmd":"bitrix"}`}},
+				{Action: kbAction{Type: "text", Label: "🟨 Blink", Payload: `{"cmd":"blink"}`}},
 			},
 			{
 				{Action: kbAction{Type: "text", Label: "🔗 Join by link", Payload: `{"cmd":"join-prompt"}`}},

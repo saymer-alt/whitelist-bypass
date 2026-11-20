@@ -18,6 +18,9 @@ const (
 	RefreshTokenEntry         = "blink_refresh_token"
 
 	accessTokenRefreshMargin = time.Hour
+	loginPollInterval        = 5 * time.Second
+	loginDefaultTTL          = 600
+	loginRenewFraction       = 0.8
 )
 
 type Credentials struct {
@@ -28,32 +31,14 @@ type Credentials struct {
 }
 
 func LoadCredentials(path string, client *http.Client, logFn func(string, ...any)) (*Credentials, error) {
-	raw, err := os.ReadFile(path)
+	tokens, err := readTokens(path)
 	if err != nil {
 		return nil, err
 	}
-	var entries []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}
-	if err := json.Unmarshal(raw, &entries); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	credentials := &Credentials{path: path, client: client, logFn: logFn}
-	for _, entry := range entries {
-		switch entry.Name {
-		case AccessTokenEntry:
-			credentials.tokens.Token = entry.Value
-		case AccessTokenExpiresAtEntry:
-			credentials.tokens.TokenExpiresAt, _ = strconv.ParseInt(entry.Value, 10, 64)
-		case RefreshTokenEntry:
-			credentials.tokens.RefreshToken = entry.Value
-		}
-	}
-	if credentials.tokens.RefreshToken == "" {
+	if tokens.RefreshToken == "" {
 		return nil, fmt.Errorf("%s has no %s, run with --login first", path, RefreshTokenEntry)
 	}
-	return credentials, nil
+	return &Credentials{path: path, client: client, logFn: logFn, tokens: tokens}, nil
 }
 
 func SaveTokens(path string, tokens TokenPair) error {
@@ -69,9 +54,20 @@ func SaveTokens(path string, tokens TokenPair) error {
 	})
 }
 
+func LoginToFile(path string, client *http.Client, stop <-chan struct{}, statusFn func(string), logFn func(string, ...any)) error {
+	tokens, err := waitForLogin(client, stop, statusFn, logFn)
+	if err != nil {
+		return err
+	}
+	if err := SaveTokens(path, tokens); err != nil {
+		return fmt.Errorf("save tokens to %s: %w", path, err)
+	}
+	logFn("[login] approved, tokens saved to %s", path)
+	return nil
+}
+
 func (c *Credentials) AccessToken() (string, error) {
-	expiresIn := time.Until(time.Unix(c.tokens.TokenExpiresAt, 0))
-	if c.tokens.Token != "" && expiresIn > accessTokenRefreshMargin {
+	if accessTokenFresh(c.tokens) {
 		return c.tokens.Token, nil
 	}
 	if err := c.refresh(); err != nil {
@@ -80,33 +76,133 @@ func (c *Credentials) AccessToken() (string, error) {
 	return c.tokens.Token, nil
 }
 
+func (c *Credentials) ConnectCall(chatID int64) (CallConnection, error) {
+	return withAccessToken(c, "calls connect", func(accessToken string) (CallConnection, error) {
+		return ConnectCall(c.client, accessToken, chatID)
+	})
+}
+
+func (c *Credentials) ResolveChatID(room string) (int64, error) {
+	inviteKey, isInvite := ParseInviteKey(room)
+	if !isInvite {
+		return ParseChatID(room)
+	}
+	return withAccessToken(c, "invite preview", func(accessToken string) (int64, error) {
+		return FetchInviteChatID(c.client, accessToken, inviteKey)
+	})
+}
+
+func (c *Credentials) CreateChat(name string) (int64, error) {
+	return withAccessToken(c, "group chat create", func(accessToken string) (int64, error) {
+		accountID, err := FetchAccountID(c.client, accessToken)
+		if err != nil {
+			return 0, err
+		}
+		return CreateGroupChat(c.client, accessToken, accountID, name)
+	})
+}
+
 func (c *Credentials) refresh() error {
+	staleRefreshToken := c.tokens.RefreshToken
+	stored, err := readTokens(c.path)
+	if err != nil {
+		c.logFn("[auth] could not re-read %s, refreshing with the tokens in memory: %v", c.path, err)
+	} else if stored.RefreshToken != "" {
+		c.tokens = stored
+	}
+	if c.tokens.RefreshToken != staleRefreshToken && accessTokenFresh(c.tokens) {
+		c.logFn("[auth] tokens were already refreshed by another process, loaded them from %s", c.path)
+		return nil
+	}
 	fresh, err := RefreshTokens(c.client, c.tokens.RefreshToken)
 	if err != nil {
 		return err
 	}
 	c.tokens = fresh
 	if err := SaveTokens(c.path, fresh); err != nil {
-		c.logFn("[auth] rotated tokens were not saved to %s, the next start will need --login: %v", c.path, err)
-		return nil
+		return fmt.Errorf("tokens refreshed but not saved to %s: %w", c.path, err)
 	}
 	c.logFn("[auth] tokens refreshed and saved, access expires %s",
 		time.Unix(fresh.TokenExpiresAt, 0).UTC().Format(time.RFC3339))
 	return nil
 }
 
-func (c *Credentials) ConnectCall(chatID int64) (CallConnection, error) {
+func withAccessToken[T any](c *Credentials, operation string, request func(accessToken string) (T, error)) (T, error) {
+	var empty T
 	accessToken, err := c.AccessToken()
 	if err != nil {
-		return CallConnection{}, err
+		return empty, err
 	}
-	connection, err := ConnectCall(c.client, accessToken, chatID)
+	result, err := request(accessToken)
 	if !IsUnauthorized(err) {
-		return connection, err
+		return result, err
 	}
-	c.logFn("[auth] calls connect returned 401, refreshing tokens")
+	c.logFn("[auth] %s returned 401, refreshing tokens", operation)
 	if err := c.refresh(); err != nil {
-		return CallConnection{}, err
+		return empty, err
 	}
-	return ConnectCall(c.client, c.tokens.Token, chatID)
+	return request(c.tokens.Token)
+}
+
+func readTokens(path string) (TokenPair, error) {
+	var tokens TokenPair
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return tokens, err
+	}
+	var entries []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return tokens, fmt.Errorf("parse %s: %w", path, err)
+	}
+	for _, entry := range entries {
+		switch entry.Name {
+		case AccessTokenEntry:
+			tokens.Token = entry.Value
+		case AccessTokenExpiresAtEntry:
+			tokens.TokenExpiresAt, _ = strconv.ParseInt(entry.Value, 10, 64)
+		case RefreshTokenEntry:
+			tokens.RefreshToken = entry.Value
+		}
+	}
+	return tokens, nil
+}
+
+func accessTokenFresh(tokens TokenPair) bool {
+	expiresIn := time.Until(time.Unix(tokens.TokenExpiresAt, 0))
+	return tokens.Token != "" && expiresIn > accessTokenRefreshMargin
+}
+
+func waitForLogin(client *http.Client, stop <-chan struct{}, statusFn func(string), logFn func(string, ...any)) (TokenPair, error) {
+	for {
+		request, err := RequestLogin(client)
+		if err != nil {
+			return TokenPair{}, err
+		}
+		link := LoginLink(request.WAT)
+		logFn("[login] open this link on the phone with the Blink app: %s", link)
+		statusFn(common.StatusLoginLink + ":" + link)
+		ttl := request.TTL
+		if ttl <= 0 {
+			ttl = loginDefaultTTL
+		}
+		renewAt := time.Now().Add(time.Duration(float64(ttl)*loginRenewFraction) * time.Second)
+		for time.Now().Before(renewAt) {
+			select {
+			case <-stop:
+				return TokenPair{}, ErrLoginCancelled
+			case <-time.After(loginPollInterval):
+			}
+			tokens, err := PollLogin(client, request.WAT)
+			if err == nil {
+				return tokens, nil
+			}
+			if !errors.Is(err, ErrLoginPending) {
+				logFn("[login] poll: %v", err)
+			}
+		}
+		logFn("[login] login link expired, requesting a new one")
+	}
 }

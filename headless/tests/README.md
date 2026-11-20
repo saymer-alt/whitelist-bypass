@@ -13,7 +13,7 @@ No external network is used.
 ## Platforms and scenarios
 
 Platforms: telemost, wbstream, dion, bitrix, blink, vk. A platform skips the scenarios it
-does not support: dion supports only connect and kick, vk only connect and dc, blink
+does not support: dion supports only connect and kick, vk only connect, dc and kcp, blink
 everything except kick.
 
 `vk` runs only when named, needs `relay/relay` from `./build-go.sh`, and opens the VK
@@ -44,8 +44,9 @@ that platform.
 ## Blink
 
 Blink has no guest access, so the creator and the joiner each need their own login.
-Both can be the same account, but every login must be a separate QR scan. Create the
-two files from the repository root, scanning each QR with the Blink app:
+Both can be the same account, but every login must be approved separately. Create the
+two files from the repository root. Each command prints a login link, open it on the
+phone with the Blink app:
 
     ./headless/blink/headless-blink-creator --login --cookies cookies-blink.json
     ./headless/blink/headless-blink-creator --login --cookies cookies-blink-joiner.json

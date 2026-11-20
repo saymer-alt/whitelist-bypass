@@ -1,16 +1,12 @@
 package joiner
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
-	"time"
 
-	"github.com/kulikov0/headless-client"
 	"github.com/kulikov0/headless-client/webrtc"
 	"whitelist-bypass/relay/common"
 	"whitelist-bypass/relay/tunnel"
@@ -66,7 +62,7 @@ func (j *WBStreamHeadlessJoiner) RunWithParams(jsonParams string) {
 	}
 	reliable := params.Reliable != nil && *params.Reliable
 
-	httpClient := j.makeHTTPClient()
+	httpClient := resolvingHTTPClient(j.ResolveFn)
 	j.logFn("wbstream-joiner: room=%s name=%s vp8Fps=%d vp8Batch=%d dualTrack=%v", params.RoomID, params.DisplayName, params.VP8FPS, params.VP8Batch, params.DualTrack)
 
 	obf, err := tunnel.NewTunnelObfuscator(tunnel.DeriveSecretFromJoinLink(params.RoomID))
@@ -126,7 +122,7 @@ func (j *WBStreamHeadlessJoiner) runOnce(httpClient *http.Client, roomID, displa
 		Obfuscator:             obf,
 		LogFn:                  j.logFn,
 		ConfigureSettingEngine: configureSettingEngine,
-		NetDialContext:         j.makeDialContext(),
+		NetDialContext:         resolvingDialContext(j.ResolveFn),
 		ResolveICEHost:         j.ResolveFn,
 		VP8FPS:                 vp8FPS,
 		VP8Batch:               vp8Batch,
@@ -199,28 +195,5 @@ func (j *WBStreamHeadlessJoiner) Close() {
 	j.mu.Unlock()
 	if sess != nil {
 		sess.Close()
-	}
-}
-
-func (j *WBStreamHeadlessJoiner) makeDialContext() func(ctx context.Context, network, addr string) (net.Conn, error) {
-	if j.ResolveFn == nil {
-		return nil
-	}
-	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, _ := net.SplitHostPort(addr)
-		resolvedIP, err := j.ResolveFn(host)
-		if err != nil {
-			return nil, err
-		}
-		dialer := headless.ChromeDialer()
-		dialer.Timeout = 10 * time.Second
-		return dialer.DialContext(ctx, network, resolvedIP+":"+port)
-	}
-}
-
-func (j *WBStreamHeadlessJoiner) makeHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout:   60 * time.Second,
-		Transport: headless.ChromeWindows.Transport(headless.TLSOptions{DialContext: j.makeDialContext()}),
 	}
 }
